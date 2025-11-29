@@ -5,7 +5,7 @@
 Project bio  
 A redesigned version of my “Absolute Monopoly” project. This version improves the user interface, adds new player stats, and introduces dynamic Chance events powered by an external API.
 
-**🔗 Live Site:** https://your-live-site-url.com (update this link after enabling GitHub Pages)
+**🔗 Live Site:** https://natethemistake.github.io/WebProgrammingFinal/
 
 ## Resources 📎
 
