@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bake or Be Baked</title>
+  <link rel="stylesheet" href="style.css">  
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script type="module" src="./main.js"></script>
+</head>
+<body>
+
+  <h1>Bake or Be Baked</h1>  
+
+<!-- PLAYER 1 -->
+<div class="player-wrap">
+    <div class="label-card"> 
+    <img src="./assets/player1.png" alt="Player 1" class="player-label">
+  </div>
+
+  <div class="player-card">
+    <img id="p1-img" src="./assets/1-p1-idle.png" width="120" alt="P1">
+
+    <p>Score: <span id="p1-score">0</span></p>
+    <p>Health: <span id="p1-health">100</span></p> 
+
+    <div class="bar"><div id="p1-hp-bar"></div></div>
+ 
+    <div class="btn-row">
+      <button id="p1-bake">Bake</button>
+      <button id="p1-smack">Smack</button>
+      <button id="p1-consume">Consume</button>
+    </div>
+  </div>
+</div> 
+
+<!-- PLAYER 2 -->
+<div class="player-wrap">
+  <div class="label-card">
+    <img src="./assets/player2.png" alt="Player 2" class="player-label">
+  </div>
+
+  <div class="player-card">
+    <img id="p2-img" src="./assets/1-p2-idle.png" width="120" alt="P2">
+
+    <p>Score: <span id="p2-score">0</span></p>
+    <p>Health: <span id="p2-health">100</span></p>
+
+    <div class="bar"><div id="p2-hp-bar"></div></div>
+ 
+    <div class="btn-row">
+      <button id="p2-bake">Bake</button>
+      <button id="p2-smack">Smack</button>
+      <button id="p2-consume">Consume</button>
+    </div>
+  </div>
+</div>
+
+<div id="over"></div>
+
+<div class="controls">
+  <button id="reset">Reset</button>
+  <a class="hub" href="../main-menu/main-menu.html">Back to Hub</a>
+  <a class="hub back" href="../character-selection/character-selection.html">Choose Character</a>
+</div>
+  <br>
+</body>  
+
+</html>
+ 
