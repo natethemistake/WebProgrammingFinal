@@ -1,99 +1,113 @@
-
+// features/character-selection/character-selection.js
 import { fetchCharacters } from "../../services/character-api.js";
-import { sortByStrength } from "../../utils/character-sorters.js";
 
-let characters = [];
-let selectedId = null;
+const STORAGE_KEYS = {
+  selectedCharacter: "am_selectedCharacter",
+};
 
-$(document).ready(async function () {
+let selected = null;
+
+function setError(msg) {
+  $("#errors").text(msg || "");
+}
+
+function setSelected(cardEl, character) {
+  $(".character-card").removeClass("is-selected");
+  $(cardEl).addClass("is-selected");
+
+  selected = character;
+
+  // enable submit once a character is picked
+  $("#start-game").prop("disabled", false);
+
+  // clear errors and reset confirm input
+  $("#confirmName").val("");
+  setError("");
+}
+
+function renderCharacters(characters) {
   const $grid = $("#characters");
-  const $start = $("#start-game");
+  $grid.empty();
 
-  $grid.html("<p>Loading characters...</p>");
+  characters.forEach((c) => {
+    const $card = $(`
+      <button type="button" class="character-card">
+        <img class="character-avatar" alt="" />
+        <div class="character-meta">
+          <h3 class="character-name"></h3>
+          <ul class="character-stats">
+            <li>hp: <span class="stat-hp"></span></li>
+            <li>atk: <span class="stat-atk"></span></li>
+            <li>def: <span class="stat-def"></span></li>
+            <li>spd: <span class="stat-spd"></span></li>
+          </ul>
+        </div>
+      </button>
+    `);
 
-  try {
-    let data = await fetchCharacters(12);
-    data = sortByStrength(data);
-    characters = data;
+    $card.find(".character-avatar").attr("src", c.avatar).attr("alt", c.name);
+    $card.find(".character-name").text(c.name);
 
-    const savedId = Number(localStorage.getItem("selectedCharacterId"));
-    if (savedId) {
-      selectedId = savedId;
-    }
+    $card.find(".stat-hp").text(c.stats.hp);
+    $card.find(".stat-atk").text(c.stats.attack);
+    $card.find(".stat-def").text(c.stats.defense);
+    $card.find(".stat-spd").text(c.stats.speed);
 
-    renderCharacters();
-    updateStartButton();
-  } catch (err) {
-    console.error(err);
-    $grid.html("<p>Could not load characters. Try again later.</p>");
-    return;
+    $card.on("click", function () {
+      setSelected(this, c);
+    });
+
+    $grid.append($card);
+  });
+}
+
+function validateForm() {
+  if (!selected) {
+    setError("Pick a character first.");
+    return false;
   }
 
-  // click handler for all cards
-  $grid.on("click", ".card", function () {
-    const id = Number($(this).attr("data-id"));
-    selectedId = id;
+  const typed = $("#confirmName").val().trim();
 
-    localStorage.setItem("selectedCharacterId", String(id));
+  if (!typed) {
+    setError("Please confirm the character name.");
+    return false;
+  }
 
-    renderCharacters();
-    updateStartButton();
-  });
+  if (typed.toLowerCase() !== String(selected.name).toLowerCase()) {
+    setError("Name does not match the selected character.");
+    return false;
+  }
 
-  // save and go back to hub
-  $start.on("click", function () {
-    if (!selectedId) return;
+  return true;
+}
 
-    const chosen = characters.find((c) => c.id === selectedId);
-    if (chosen) {
-      // shape Absolute Monopoly expects: { name, avatar, stats: { ... } }
-      const amPlayer = {
-        name: chosen.name,
-        avatar: chosen.avatar,
-        stats: {
-          resilience: Math.max(1, Math.round(chosen.hp / 30)),
-          exhaustion: Math.max(1, 5 - Math.round(chosen.speed / 40)),
-          defense: Math.max(1, Math.round(chosen.defense / 30)),
-        },
-      };
+function saveSelectedCharacter() {
+  localStorage.setItem(STORAGE_KEYS.selectedCharacter, JSON.stringify(selected));
+}
 
-      localStorage.setItem("am_player", JSON.stringify(amPlayer));
-    }
+$(async function () {
+  if (!$("#characters").length) return;
 
+  $("#characters").text("loading characters...");
+  setError("");
+
+  try {
+    const characters = await fetchCharacters(12);
+    renderCharacters(characters);
+  } catch (err) {
+    console.error(err);
+    $("#characters").empty();
+    setError("Could not load characters. Try refreshing.");
+  }
+
+  $("#characterForm").on("submit", function (e) {
+    e.preventDefault();
+    setError("");
+
+    if (!validateForm()) return;
+
+    saveSelectedCharacter();
     window.location.href = "../main-menu/main-menu.html";
   });
 });
-
-function renderCharacters() {
-  const $grid = $("#characters");
-
-  if (!characters.length) {
-    $grid.html("<p>No characters found.</p>");
-    return;
-  }
-
-  let html = "";
-
-  for (let i = 0; i < characters.length; i++) {
-    const c = characters[i];
-    const isSelected = c.id === selectedId;
-
-    html += `
-      <button class="card ${isSelected ? "selected" : ""}" type="button" data-id="${c.id}">
-        <img src="${c.avatar}" alt="${c.name}" class="card-avatar">
-        <h3>${c.name}</h3>
-        <p>HP: ${c.hp}</p>
-        <p>ATK: ${c.attack}</p>
-        <p>DEF: ${c.defense}</p>
-        <p>SPD: ${c.speed}</p>
-      </button>
-    `;
-  }
-
-  $grid.html(html);
-}
-
-function updateStartButton() {
-  const $start = $("#start-game");
-  $start.prop("disabled", !selectedId);
-}

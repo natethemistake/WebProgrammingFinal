@@ -1,69 +1,169 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Absolute Monopoly</title>
-  <link rel="stylesheet" href="./styles.css">
-</head>
-<body>
-  <body>
-  <a class="hub back" href="../main-menu/main-menu.html" aria-label="Back to Hub">← Back to Hub</a>
-  <a class="hub back" href="../character-selection/character-selection.html">Choose Character</a>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Absolute Monopoly</title>
 
-  <div class="am-grid">
-    <!-- left: player panel -->
-    <aside class="panel">
-      <img id="plAvatar" alt="Player avatar">
-      <h2 id="plName">Player</h2>
-      <div class="small">STATS</div>
-      <ul id="plStats" class="small"></ul>
-    </aside>
+    <!-- GLOBAL STYLES -->
+    <link rel="stylesheet" href="../../styles/main.css" />
 
-    <!-- middle: business & manufacturing -->
-    <main class="panel">
-      <h2>Business</h2>
-      <p><strong>Funds:</strong> $<span id="funds">0</span></p>
-      <p><strong>Reputation:</strong> <span id="reputation" title="Higher reputation means customers pay a bit more and suppliers give discounts. Lower reputation does the opposite.">50</span></p>
-      <p class="small" id="repHint" title="Reputation changes when you sell/invest (up) or when you don't sell/overprice (down).">
-       Tip: High rep (80+) → customers pay up to ~15% extra; raw=$4, factory=$45.
-       Low rep (20-) → customers pay less; raw=$6, factory=$60
-      </p>
+    <!-- GAME STYLES -->
+    <link rel="stylesheet" href="./styles.css" />
 
-      <p><strong>Unsold Inventory:</strong> <span id="inventory">0</span></p>
-      <p><strong>Public Demand:</strong> <span id="demand">0</span></p>
+    <!-- LIBS -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" defer></script>
 
-      <p class="row">
-        <strong>Price per item:</strong>
-        <button id="priceDown" type="button">-</button>
-        <span id="price">1.00</span>
-        <button id="priceUp" type="button">+</button>
-      </p>
+    <!-- SERVICES -->
+    <script src="../../services/npc-api.js" defer></script>
+    <script src="../../services/poke-item-api.js" defer></script>
 
-      <h2>Manufacturing</h2>
-      <p><strong>Items per second:</strong> <span id="ips">0</span></p>
-      <p><strong>Raw Materials:</strong> <span id="raw">0</span></p>
+    <!-- GAME LOGIC -->
+    <script type="module" src="./main.js" defer></script>
+  </head>
 
-      <div class="actions">
-        <button id="makeOne" type="button">Make Item</button>
-        <button id="buyMats" type="button">Buy 10 Raw ($5)</button>
-        <button id="buyFactory" type="button">Buy Factory ($50)</button>
-        <button id="resetGame" type="button">Reset Game</button>
-      </div>
-    </main>
+  <body class="am-body">
+    <nav class="am-nav">
+      <a class="am-nav-btn" href="../main-menu/main-menu.html">← back to hub</a>
+      <a
+        class="am-nav-btn"
+        href="../character-selection/character-selection.html?reset=true"
+      >
+        choose character
+      </a>
+    </nav>
 
-<!-- right: npc -->
-<aside class="panel">
-  <h2>CORGI-DOG NPC</h2>
+    <div class="am-grid">
+      <!-- PLAYER PANEL -->
+      <aside class="am-panel">
+        <div class="am-panel-title">player</div>
 
-  <!-- NPC portrait + line -->
-  <div id="npc-box" class="npc">
-    <img id="npc-img" src="./assets/npc.png" alt="Sassy NPC">
-    <p id="npc" aria-live="polite">Welcome. Try not to bankrupt yourself.</p>
-  </div>
-</aside>
+        <div class="am-player-card">
+          <div class="am-avatar-wrap">
+            <img id="plAvatar" class="am-avatar" alt="Player avatar" />
+          </div>
 
+          <h2 id="plName" class="am-player-name">player</h2>
 
-  <script defer src="./main.js"></script>
-</body>
+          <div class="am-subtitle">stats</div>
+          <ul id="plStats" class="am-stats"></ul>
+        </div>
+      </aside>
+
+      <!-- GAME PANEL -->
+      <main class="am-panel">
+        <div class="am-panel-title">absolute monopoly</div>
+
+        <section class="am-section">
+          <div class="am-kv">
+            <div class="am-k">current product</div>
+            <div class="am-v"><span id="productName">loading…</span></div>
+          </div>
+          <div class="am-effects" id="productEffects">
+            product effects: demand x1.00, raw -0, workshop -0
+          </div>
+
+          <div class="am-kv">
+            <div class="am-k">funds</div>
+            <div class="am-v">$<span id="funds">0</span></div>
+          </div>
+
+          <div class="am-kv">
+            <div class="am-k">reputation</div>
+            <div class="am-v"><span id="reputation">50</span></div>
+          </div>
+
+          <p class="am-hint">
+            tip: high rep (80+) → customers pay ~15% extra; raw=$4, workshop=$45.
+            low rep (20-) → customers pay less; raw=$6, workshop=$60.
+          </p>
+        </section>
+
+        <section class="am-section">
+          <div class="am-stat-grid">
+            <div class="am-stat" id="statInventory">
+              <div class="am-stat-label">unsold inventory</div>
+              <div class="am-stat-value"><span id="inventory">0</span></div>
+            </div>
+
+            <div class="am-stat" id="statDemand">
+              <div class="am-stat-label">public demand</div>
+              <div class="am-stat-value"><span id="demand">0</span></div>
+            </div>
+
+            <div class="am-stat" id="statIps">
+              <div class="am-stat-label">items / second</div>
+              <div class="am-stat-value"><span id="ips">0</span></div>
+            </div>
+
+            <div class="am-stat" id="statRaw">
+              <div class="am-stat-label">raw materials</div>
+              <div class="am-stat-value"><span id="raw">0</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="am-section">
+          <div class="am-price-row">
+            <div class="am-price-label">price per item</div>
+
+            <div class="am-stepper">
+              <button class="am-btn am-btn-secondary" id="priceDown" type="button">
+                −
+              </button>
+
+              <div class="am-price">$<span id="price">1.00</span></div>
+
+              <button class="am-btn am-btn-secondary" id="priceUp" type="button">
+                +
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="am-section">
+          <div class="am-actions">
+            <button class="am-btn am-btn-primary" id="makeOne" type="button">
+              make item
+            </button>
+
+            <button class="am-btn" id="buyMats" type="button">
+              buy 10 supplies ($5)
+            </button>
+
+            <button class="am-btn" id="buyFactory" type="button">
+              upgrade workshop ($50)
+            </button>
+
+            <button class="am-btn am-btn-danger" id="resetGame" type="button">
+              reset
+            </button>
+          </div>
+        </section>
+      </main>
+
+      <!-- NPC PANEL -->
+      <aside class="am-panel">
+        <div class="am-panel-title">corgi-dog npc</div>
+
+        <div class="am-npc" id="npcCard">
+          <div class="am-npc-head">
+            <img id="npc-img" class="am-npc-img" alt="NPC" />
+            <div>
+              <div class="am-npc-label">market radio</div>
+              <div class="am-npc-sub">tips + chatter</div>
+            </div>
+          </div>
+
+          <p id="npc" class="am-npc-text" aria-live="polite">
+            welcome. try not to bankrupt yourself.
+          </p>
+        </div>
+      </aside>
+    </div>
+
+    <!-- haptics / feedback -->
+    <div id="toast" class="am-toast"></div>
+    <div id="fx" class="am-fx-layer"></div>
+  </body>
 </html>

@@ -5,40 +5,55 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Choose Your Fighter</title>
 
-    <!-- global styles (same as the hub) -->
+    <!-- global styles -->
     <link rel="stylesheet" href="../../styles/main.css" />
-    <!-- character-selection specific styles -->
+    <!-- page styles -->
     <link rel="stylesheet" href="./character-selection.css" />
+
+    <!-- libs -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" defer></script>
+
+    <!-- module page logic -->
+    <script type="module" src="./character-selection.js" defer></script>
   </head>
+
   <body class="hub-page">
     <header class="hub-header">
-      <a class="hub back" href="../main-menu/main-menu.html" aria-label="Back to Hub">
-        ← Back to Hub
+      <a class="hub back" href="../../public/index.html" aria-label="Back to Landing">
+        ← Back to Landing
       </a>
     </header>
 
     <main id="character-selection">
       <section class="selection-panel">
         <h1>Choose your fighter</h1>
+
         <p class="helper-text">
           Click a card to pick your character. Your choice is saved and reused
-          in Absolute Monopoly and The Shop.
+          across all games.
         </p>
 
-        <div id="characters" class="character-grid">
-          <!-- cards injected by JavaScript -->
-        </div>
+        <div id="characters" class="character-grid"></div>
 
-        <div class="selection-actions">
-          <button id="start-game" disabled>
+        <form id="characterForm" class="selection-actions" novalidate>
+          <label class="confirm-label">
+            Confirm character name
+            <input
+              type="text"
+              id="confirmName"
+              placeholder="Type the character name"
+              required
+              autocomplete="off"
+            />
+          </label>
+
+          <button id="start-game" type="submit" disabled>
             Save selection &amp; return to hub
           </button>
+
           <p id="errors" class="notice" aria-live="polite"></p>
-        </div>
+        </form>
       </section>
     </main>
-
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script type="module" src="./character-selection.js"></script>
   </body>
 </html>

@@ -1,34 +1,40 @@
-
 $(document).ready(function () {
-  const saved = localStorage.getItem("am_player");
+  const raw = localStorage.getItem("am_selectedCharacter");
 
-  // if no saved player, force the user to the character selection screen first
-  if (!saved) {
+  if (!raw) {
     window.location.href = "../character-selection/character-selection.html";
     return;
   }
 
-  let player;
+  let character;
   try {
-    player = JSON.parse(saved);
-  } catch (e) {
-    // if something is wrong with the data, clear it and send them back
-    localStorage.removeItem("am_player");
+    character = JSON.parse(raw);
+  } catch (error) {
+    console.log("bad selected character in storage:", error);
+    localStorage.removeItem("am_selectedCharacter");
     window.location.href = "../character-selection/character-selection.html";
     return;
   }
 
-  if (!player || !player.name) {
+  if (!character || !character.name) {
+    localStorage.removeItem("am_selectedCharacter");
     window.location.href = "../character-selection/character-selection.html";
     return;
   }
 
-  const header = document.querySelector(".hub-header");
-  if (!header) return;
+  // optional image spot
+  const $img = $("#menuPlayerImg");
+  if ($img.length && character.avatar) {
+    $img.attr("src", character.avatar);
+    $img.attr("alt", character.name);
+  }
 
-  const banner = document.createElement("div");
-  banner.className = "current-player-banner";
-  banner.textContent = "Current fighter: " + player.name;
+  const $header = $(".hub-header");
+  if (!$header.length) return;
 
-  header.appendChild(banner);
+  const $banner = $("<div>");
+  $banner.addClass("current-player-banner");
+  $banner.text("current fighter: " + character.name);
+
+  $header.append($banner);
 });

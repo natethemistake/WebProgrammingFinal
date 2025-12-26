@@ -1,34 +1,29 @@
 // features/cookie-clicker/main.js
-// 1) import player objects
 import { PLAYER_ONE, PLAYER_TWO } from "./player.js";
+import { readProfile, writeProfile } from "../../utils/profile.js";
 
 // --- state/consts ---
 let isGameOver = false;
-const BAKE_POINTS  = 10;
+const BAKE_POINTS = 10;
 const SMACK_DAMAGE = 10;
 const CONSUME_HEAL = 10;
-const RESET_DELAY  = 800; // ms back to idle after an action
+const RESET_DELAY = 800; // ms back to idle after an action
 
-// 2) render function (updates screen)
 function render() {
-  // numbers
   $("#p1-score").text(PLAYER_ONE.totalScore);
   $("#p1-health").text(PLAYER_ONE.totalHealth);
   $("#p2-score").text(PLAYER_TWO.totalScore);
   $("#p2-health").text(PLAYER_TWO.totalHealth);
 
-  // health bars
   $("#p1-hp-bar").css("width", PLAYER_ONE.totalHealth + "%");
   $("#p2-hp-bar").css("width", PLAYER_TWO.totalHealth + "%");
 
-  // images
   $("#p1-img").attr("src", PLAYER_ONE.sprites[PLAYER_ONE.currentSprite]);
   $("#p2-img").attr("src", PLAYER_TWO.sprites[PLAYER_TWO.currentSprite]);
 }
 
-// run action → render → check game over → maybe reset to idle
 function step(action) {
-  if (isGameOver) return; // ignore clicks after game over
+  if (isGameOver) return;
 
   action();
   render();
@@ -45,9 +40,33 @@ function step(action) {
   }
 }
 
-// 3) wire buttons (jQuery)
+// ----------------------
+// wallet awarding
+// ----------------------
+
+function awardPointsToWallet(points) {
+  // points -> cents at 1:1 ($1 per point)
+  const cents = Math.max(0, Math.round(Number(points) || 0) * 100);
+
+  const profile = readProfile();
+  profile.pointsCents = (Number(profile.pointsCents) || 0) + cents;
+  writeProfile(profile);
+}
+
+function awardGameWinnings() {
+  // choose what to award:
+  // option A: winner score only
+  const winnerScore = Math.max(PLAYER_ONE.totalScore, PLAYER_TWO.totalScore);
+
+  // award to shop wallet
+  awardPointsToWallet(winnerScore);
+}
+
+// ----------------------
+// wire buttons
+// ----------------------
+
 $(function () {
-  // Player 1
   $("#p1-bake").on("click", function () {
     step(function () {
       PLAYER_ONE.updateScore(BAKE_POINTS);
@@ -71,7 +90,6 @@ $(function () {
     });
   });
 
-  // Player 2
   $("#p2-bake").on("click", function () {
     step(function () {
       PLAYER_TWO.updateScore(BAKE_POINTS);
@@ -95,10 +113,9 @@ $(function () {
     });
   });
 
-  // Reset button
   $("#reset").on("click", function () {
-    PLAYER_ONE.totalScore  = 0;
-    PLAYER_TWO.totalScore  = 0;
+    PLAYER_ONE.totalScore = 0;
+    PLAYER_TWO.totalScore = 0;
     PLAYER_ONE.totalHealth = 100;
     PLAYER_TWO.totalHealth = 100;
 
@@ -112,13 +129,10 @@ $(function () {
     render();
   });
 
-  // initial render on page load
   render();
 });
 
-// checks for every action
 function checkGameOver() {
-  // 1) health endings
   if (PLAYER_ONE.totalHealth <= 0 && PLAYER_TWO.totalHealth <= 0) {
     showOver("Both players reached 0 health.");
     return true;
@@ -138,7 +152,6 @@ function checkGameOver() {
     return true;
   }
 
-  // 2) score domination (> 3x)
   if (PLAYER_TWO.totalScore > 0 && PLAYER_ONE.totalScore >= PLAYER_TWO.totalScore * 3) {
     PLAYER_ONE.currentSprite = "win";
     PLAYER_TWO.currentSprite = "lose";
@@ -159,17 +172,24 @@ function checkGameOver() {
 
 function showOver(message) {
   isGameOver = true;
+
+  awardGameWinnings();
+
   $("#over").text("Game Over: " + message);
   $("body").addClass("game-over-anim");
   disableButtons();
 }
 
 function disableButtons() {
-  $("#p1-bake, #p1-smack, #p1-consume, #p2-bake, #p2-smack, #p2-consume")
-    .prop("disabled", true);
+  $("#p1-bake, #p1-smack, #p1-consume, #p2-bake, #p2-smack, #p2-consume").prop(
+    "disabled",
+    true
+  );
 }
 
 function enableButtons() {
-  $("#p1-bake, #p1-smack, #p1-consume, #p2-bake, #p2-smack, #p2-consume")
-    .prop("disabled", false);
+  $("#p1-bake, #p1-smack, #p1-consume, #p2-bake, #p2-smack, #p2-consume").prop(
+    "disabled",
+    false
+  );
 }

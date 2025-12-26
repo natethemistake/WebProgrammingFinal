@@ -5,15 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>The Shop</title>
     <link rel="stylesheet" href="./style.css" />
+
+    <script defer src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+    <script type="module" defer src="./main.js"></script>
   </head>
+
   <body>
     <header class="shop-header">
       <div class="shop-title">
-        <img
-          src="./assets/the_shop_alternate.png"
-          alt="The Shop logo"
-          class="shop-logo"
-        />
+        <img id="shopLogo" alt="The Shop logo" class="shop-logo" />
       </div>
       <div class="score">
         <span>Score:</span>
@@ -21,14 +22,20 @@
       </div>
     </header>
 
-    <!-- back to Main Menu Button -->
     <nav class="shop-nav">
       <a href="../main-menu/main-menu.html" class="shop-link">← Main Menu</a>
-      <a href="../character-selection/character-selection.html" class="shop-link">Choose Character</a>
+      <a href="../character-selection/character-selection.html" class="shop-link"
+        >Choose Character</a
+      >
     </nav>
 
     <section class="shop-player" aria-label="Current fighter">
-      <img id="shopPlayerAvatar" class="shop-player__avatar" alt="" hidden />
+      <img
+        id="shopPlayerAvatar"
+        class="shop-player__avatar"
+        alt="Current fighter avatar"
+        hidden
+      />
       <p id="shopPlayerName" class="shop-player__name"></p>
     </section>
 
@@ -53,7 +60,5 @@
         </aside>
       </section>
     </main>
-
-    <script type="module" defer src="./main.js"></script>
   </body>
 </html>

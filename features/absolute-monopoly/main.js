@@ -1,439 +1,571 @@
-// =============================================
-// PLAYER SELECTION PAGE (player-selection.html)
-// =============================================
+// features/absolute-monopoly/main.js
 
-const player1 = {
-  id: "p1",
-  name: "Player 1",
-  avatar: "./assets/player1.png",
-  stats: { resilience: 3, exhaustion: 1, defense: 2 },
+import { readProfile, writeProfile } from "../../utils/profile.js";
+
+const STORAGE_KEYS = {
+  selectedCharacter: "am_selectedCharacter",
 };
 
-const player2 = {
-  id: "p2",
-  name: "Player 2",
-  avatar: "./assets/player2.png",
-  stats: { resilience: 2, exhaustion: 2, defense: 3 },
+const FALLBACK = {
+  NEED_RAW: "you need supplies first.",
+  NOT_ENOUGH_FUNDS: "not enough pokédollars.",
+  EARN_MORE: "earn more before upgrading the workshop.",
+  NPC_DOWN: "market radio is down. keep grinding.",
+  PRODUCT_DOWN: "product line is stable. keep grinding.",
 };
 
-let selected = ""; // "p1", "p2", or "guest"
-let guestImageData = ""; // data URL after upload
+/* =======================
+   wallet / playtime config
+======================= */
 
-function qs(sel) {
-  return document.querySelector(sel);
-}
-function qsa(sel) {
-  return document.querySelectorAll(sel);
-}
+const PAY = {
+  // base rate: $0.02 per second = $1.20 per minute
+  centsPerSecondBase: 2,
 
-function renderPresets() {
-  const p1Img = qs("#p1Img");
-  const p2Img = qs("#p2Img");
-  if (p1Img) {
-    p1Img.src = player1.avatar;
-    qs("#p1Name").textContent = player1.name;
-  }
-  if (p2Img) {
-    p2Img.src = player2.avatar;
-    qs("#p2Name").textContent = player2.name;
-  }
-}
+  // small progress scaling
+  centsPerSecondPerFactory: 1, // +$0.01/sec per factory
+  centsPerSecondAtHighRep: 1,  // +$0.01/sec if rep >= 80
 
-function selectCard(id) {
-  selected = id;
+  // cap so it can’t run away
+  centsPerSecondMax: 10, // max $0.10/sec
 
-  const cards = qsa(".card");
-  for (let i = 0; i < cards.length; i++) {
-    const isSelected = cards[i].id === id;
-    if (isSelected) cards[i].classList.add("selected");
-    else cards[i].classList.remove("selected");
-    cards[i].setAttribute("aria-checked", String(isSelected));
+  // write wallet at most every N ms
+  saveEveryMs: 8000,
+};
+
+class Wallet {
+  constructor() {
+    this.profile = readProfile();
+    this.bufferCents = 0;
+    this.lastSaveAt = Date.now();
+    this.lastTickAt = Date.now();
   }
 
-  const enable = id === "guest";
-  const inputs = qsa("#guest input, #guest select");
-  for (let j = 0; j < inputs.length; j++) {
-    inputs[j].disabled = !enable;
+  getRateCentsPerSec(state) {
+    let rate = PAY.centsPerSecondBase;
+    rate += (Number(state.factories) || 0) * PAY.centsPerSecondPerFactory;
+    if ((Number(state.reputation) || 0) >= 80) rate += PAY.centsPerSecondAtHighRep;
+
+    return clamp(rate, 0, PAY.centsPerSecondMax);
   }
-}
 
-function setupCardClicks() {
-  const p1 = qs("#p1");
-  const p2 = qs("#p2");
-  const guest = qs("#guest");
+  onTick(state) {
+    const now = Date.now();
+    const dtSec = (now - this.lastTickAt) / 1000;
+    this.lastTickAt = now;
 
-  if (p1)
-    p1.addEventListener("click", function () {
-      selectCard("p1");
-    });
-  if (p2)
-    p2.addEventListener("click", function () {
-      selectCard("p2");
-    });
+    const safeDt = clamp(dtSec, 0, 3);
 
-  if (guest) {
-    guest.addEventListener("click", function (e) {
-      const tag = e.target.tagName;
-      if (tag === "INPUT" || tag === "SELECT" || tag === "LABEL") return;
-      selectCard("guest");
-    });
+    const rate = this.getRateCentsPerSec(state);
+    this.bufferCents += Math.round(rate * safeDt);
+
+    // save sometimes
+    if (now - this.lastSaveAt >= PAY.saveEveryMs) {
+      this.flush();
+      this.lastSaveAt = now;
+    }
   }
-}
 
-function setupCardKeyboard() {
-  const cards = qsa(".card");
-  for (let i = 0; i < cards.length; i++) {
-    cards[i].addEventListener("keydown", function (e) {
-      const key = e.key;
-      if (key === "Enter" || key === " ") {
-        e.preventDefault();
-        selectCard(cards[i].id);
-      }
-    });
+  flush() {
+    if (this.bufferCents <= 0) return;
+
+    // refresh in case another game changed it
+    this.profile = readProfile();
+    this.profile.pointsCents = (Number(this.profile.pointsCents) || 0) + this.bufferCents;
+    writeProfile(this.profile);
+
+    this.bufferCents = 0;
   }
 }
 
-function setupGuestPreview() {
-  const fileInput = qs("#guestImage");
-  const preview = qs("#guestPreview");
-  if (!fileInput) return;
+class Player {
+  constructor(saved) {
+    const s = (saved && saved.stats) || {};
 
-  fileInput.addEventListener("change", function () {
-    const file = fileInput.files[0];
-    if (!file) return;
+    this.name = (saved && saved.name) || "manager";
+    this.avatar = (saved && saved.avatar) || "./assets/player1.png";
 
-    const reader = new FileReader();
-    reader.onload = function () {
-      guestImageData = reader.result;
-      preview.src = guestImageData;
+    this.stats = {
+      hp: Number(s.hp) || 1,
+      attack: Number(s.attack) || 1,
+      defense: Number(s.defense) || 1,
+      speed: Number(s.speed) || 1,
     };
-    reader.readAsDataURL(file);
-  });
+  }
+
+  getProductionBonus() {
+    return clamp(this.stats.attack / 100, 0, 1.0); // 0..1
+  }
+
+  getDemandBonus() {
+    return clamp(this.stats.speed / 200, 0, 0.75); // 0..0.75
+  }
+
+  getReputationShield() {
+    return clamp(this.stats.defense / 200, 0, 0.5); // 0..0.5
+  }
+
+  getEventShield() {
+    return clamp(this.stats.hp / 250, 0, 0.6); // 0..0.6
+  }
 }
 
-function validateAndSave(event) {
-  const errors = qs("#errors");
-  if (!errors) return;
-  errors.textContent = "";
+class GameState {
+  constructor() {
+    this.funds = 20;
+    this.price = 1.0;
+    this.inventory = 0;
+    this.demand = 5.0;
+    this.raw = 10;
+    this.factories = 0;
 
-  if (selected === "") {
-    event.preventDefault();
-    errors.textContent = "Please choose a player.";
+    this.reputation = 50; // 0..100
+  }
+
+  clampReputation() {
+    this.reputation = clamp(this.reputation, 0, 100);
+  }
+
+  getPriceMultiplier() {
+    const delta = (this.reputation - 50) / 200;
+    const mult = 1 + delta * 0.6;
+    return clamp(mult, 0.85, 1.15);
+  }
+
+  getRawBaseCost() {
+    if (this.reputation >= 80) return 4;
+    if (this.reputation <= 20) return 6;
+    return 5;
+  }
+
+  getFactoryBaseCost() {
+    if (this.reputation >= 80) return 45;
+    if (this.reputation <= 20) return 60;
+    return 50;
+  }
+}
+
+class ProductManager {
+  constructor() {
+    this.current = {
+      name: "product",
+      demandBoost: 1.0,
+      rawDiscount: 0,
+      factoryDiscount: 0,
+    };
+  }
+
+  _effectsFromName(name) {
+    const len = String(name).replaceAll(" ", "").length;
+
+    const demandBoost = len >= 10 ? 1.25 : len >= 7 ? 1.15 : 1.05;
+    const rawDiscount = len >= 10 ? 1 : 0;
+    const factoryDiscount = len >= 10 ? 5 : 0;
+
+    return { demandBoost, rawDiscount, factoryDiscount };
+  }
+
+  async loadNewProduct(ui, npc, market) {
+    ui.setProductName("loading...");
+
+    try {
+      if (typeof fetchRandomProductName !== "function") {
+        throw new Error("poke-item-api missing");
+      }
+
+      const name = await fetchRandomProductName();
+      const fx = this._effectsFromName(name);
+
+      this.current = { name, ...fx };
+      ui.setProductName(this.current.name);
+
+      npc.say(`new product drop: ${this.current.name}.`);
+    } catch (err) {
+      console.log("product api failed:", err);
+
+      this.current = {
+        name: "product",
+        demandBoost: 1.0,
+        rawDiscount: 0,
+        factoryDiscount: 0,
+      };
+
+      ui.setProductName(this.current.name);
+      ui.setNpcMessage(FALLBACK.PRODUCT_DOWN);
+    }
+
+    market.recalcDemand();
+    ui.updateAll();
+  }
+}
+
+class NpcSpeaker {
+  constructor(ui) {
+    this.ui = ui;
+    this.lastNpcAt = 0;
+  }
+
+  async say(prefix) {
+    const now = Date.now();
+    if (now - this.lastNpcAt < 2500) return;
+    this.lastNpcAt = now;
+
+    if (typeof fetchNpcLine !== "function") {
+      if (prefix) this.ui.setNpcMessage(prefix);
+      return;
+    }
+
+    try {
+      const line = await fetchNpcLine();
+      const msg = prefix ? `${prefix} ${line}` : line;
+      this.ui.setNpcMessage(msg);
+    } catch (err) {
+      console.log("npc api error:", err);
+      this.ui.setNpcMessage(FALLBACK.NPC_DOWN);
+    }
+  }
+}
+
+class Market {
+  constructor(state, player, products, ui, npc, wallet) {
+    this.state = state;
+    this.player = player;
+    this.products = products;
+    this.ui = ui;
+    this.npc = npc;
+    this.wallet = wallet;
+  }
+
+  getRawCost() {
+    const base = this.state.getRawBaseCost();
+    return Math.max(1, base - (this.products.current.rawDiscount || 0));
+  }
+
+  getFactoryCost() {
+    const base = this.state.getFactoryBaseCost();
+    return Math.max(1, base - (this.products.current.factoryDiscount || 0));
+  }
+
+  changeReputation(amount) {
+    const shield = this.player.getReputationShield();
+    let delta = amount;
+
+    if (delta < 0) {
+      delta = Math.round(delta * (1 - shield));
+      if (delta === 0) delta = -1;
+    }
+
+    this.state.reputation += delta;
+    this.state.clampReputation();
+  }
+
+  recalcDemand() {
+    const s = this.state;
+
+    const base = 6.0;
+    const pricePenalty = Math.max(0, s.price - 1.0) * 1.2;
+    const stockPenalty = Math.min(3.0, s.inventory / 25.0);
+
+    let d = Math.max(0, base - pricePenalty - stockPenalty);
+
+    d += this.player.getDemandBonus();
+    d = d * (this.products.current.demandBoost || 1.0);
+
+    if (s.reputation >= 80) d += 0.5;
+    if (s.reputation <= 20) d -= 0.5;
+
+    s.demand = Math.max(0, d);
+  }
+
+  tick() {
+    const s = this.state;
+
+    this.wallet.onTick(s);
+
+    // production
+    const baseMade = Math.min(s.factories, s.raw);
+
+    const prodBonus = this.player.getProductionBonus();
+    const bonus = Math.random() < prodBonus ? 1 : 0;
+
+    const made = Math.min(s.raw, baseMade + bonus);
+
+    s.inventory += made;
+    s.raw -= made;
+
+    // sales
+    const potential = Math.floor(s.demand);
+    const sold = Math.min(potential, s.inventory);
+    s.inventory -= sold;
+
+    const paidPerItem = s.price * s.getPriceMultiplier();
+    s.funds += sold * paidPerItem;
+
+    if (sold > 0) this.changeReputation(1);
+    else this.changeReputation(-1);
+
+    if (s.price > 2.5) {
+      const shield = this.player.getEventShield();
+      if (Math.random() > shield) this.changeReputation(-1);
+    }
+
+    this.recalcDemand();
+    this.ui.updateAll();
+    this.checkMilestones();
+  }
+
+  checkMilestones() {
+    const s = this.state;
+
+    if (s.funds < 5) this.npc.say("low funds warning.");
+    if (s.reputation <= 20) this.npc.say("reputation is tanking.");
+
+    if (s.funds >= 100 && s.funds < 150) this.npc.say("big bankroll.");
+    if (s.reputation >= 80 && s.reputation < 90) this.npc.say("trainers love this mart.");
+    if (s.factories === 3) this.npc.say("workshops are humming.");
+  }
+}
+
+class UI {
+  constructor(state, player, products, market, wallet) {
+    this.state = state;
+    this.player = player;
+    this.products = products;
+    this.market = market;
+    this.wallet = wallet;
+  }
+
+  initPlayerPanel() {
+    $("#plName").text(this.player.name);
+
+    const $avatar = $("#plAvatar");
+    if ($avatar.length) $avatar.attr("src", this.player.avatar).attr("alt", this.player.name);
+
+    const st = this.player.stats;
+    $("#plStats").html(
+      `<li>hp: ${st.hp}</li>` +
+        `<li>atk: ${st.attack}</li>` +
+        `<li>def: ${st.defense}</li>` +
+        `<li>spd: ${st.speed}</li>`
+    );
+  }
+
+  setNpcMessage(msg) {
+    const $npc = $("#npc");
+    if (!$npc.length) return;
+
+    $npc.stop(true, true).fadeOut(120, () => {
+      $npc.text(msg).fadeIn(120).addClass("flash");
+      setTimeout(() => $npc.removeClass("flash"), 450);
+    });
+  }
+
+  setProductName(name) {
+    $("#productName").text(name);
+  }
+
+  updateAll() {
+    const s = this.state;
+
+    $("#funds").text(s.funds.toFixed(2));
+    $("#price").text(s.price.toFixed(2));
+    $("#inventory").text(String(s.inventory));
+    $("#demand").text(s.demand.toFixed(1));
+    $("#raw").text(String(s.raw));
+    $("#ips").text(s.factories.toFixed(1));
+    $("#reputation").text(String(s.reputation));
+
+    $("#buyMats").text(`buy 10 supplies ($${this.market.getRawCost()})`);
+    $("#buyFactory").text(`upgrade workshop ($${this.market.getFactoryCost()})`);
+  }
+
+  bindControls(navigateToCharacterSelect) {
+    $(document).on("pointerdown", "button", function (e) {
+      const rect = this.getBoundingClientRect();
+      this.style.setProperty("--x", `${e.clientX - rect.left}px`);
+      this.style.setProperty("--y", `${e.clientY - rect.top}px`);
+      $(this).addClass("ripple");
+      setTimeout(() => $(this).removeClass("ripple"), 220);
+    });
+
+    $("#priceUp").on("click", () => {
+      this.state.price += 0.25;
+      this.market.recalcDemand();
+      this.updateAll();
+      pulse("#price");
+    });
+
+    $("#priceDown").on("click", () => {
+      this.state.price = Math.max(0.25, this.state.price - 0.25);
+      this.market.recalcDemand();
+      this.updateAll();
+      pulse("#price");
+    });
+
+    $("#makeOne").on("click", () => {
+      if (this.state.raw > 0) {
+        this.state.raw -= 1;
+        this.state.inventory += 1;
+        this.updateAll();
+        floatFx("+1", 120, 0);
+        return;
+      }
+
+      this.setNpcMessage(FALLBACK.NEED_RAW);
+      this.market.changeReputation(-1);
+      this.updateAll();
+      shake("#raw");
+    });
+
+    $("#buyMats").on("click", () => {
+      const cost = this.market.getRawCost();
+      if (this.state.funds >= cost) {
+        this.state.funds -= cost;
+        this.state.raw += 10;
+        this.market.changeReputation(1);
+        this.updateAll();
+        floatFx("-$", 110, 0);
+        pulse("#raw");
+        return;
+      }
+
+      this.setNpcMessage(FALLBACK.NOT_ENOUGH_FUNDS);
+      this.market.changeReputation(-1);
+      this.updateAll();
+      shake("#funds");
+    });
+
+    $("#buyFactory").on("click", () => {
+      const cost = this.market.getFactoryCost();
+      if (this.state.funds >= cost) {
+        this.state.funds -= cost;
+        this.state.factories += 1;
+        this.market.changeReputation(2);
+        this.updateAll();
+        pulse("#ips");
+        return;
+      }
+
+      this.setNpcMessage(FALLBACK.EARN_MORE);
+      this.market.changeReputation(-1);
+      this.updateAll();
+      shake("#funds");
+    });
+
+    $("#resetGame").on("click", () => {
+      // flush wallet before leaving
+      this.wallet.flush();
+      localStorage.removeItem(STORAGE_KEYS.selectedCharacter);
+      navigateToCharacterSelect(true);
+    });
+  }
+}
+
+// ----------------------
+// helpers
+// ----------------------
+
+function clamp(num, min, max) {
+  return Math.max(min, Math.min(max, num));
+}
+
+function getSavedCharacter() {
+  const raw = localStorage.getItem(STORAGE_KEYS.selectedCharacter);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    console.log("bad selected character in storage:", err);
+    return null;
+  }
+}
+
+function redirectToCharacterSelection(reset) {
+  const suffix = reset ? "?reset=true" : "";
+  window.location.href = "../character-selection/character-selection.html" + suffix;
+}
+
+function pulse(selector) {
+  const $el = $(selector);
+  $el.addClass("pulse");
+  setTimeout(() => $el.removeClass("pulse"), 450);
+}
+
+function shake(selector) {
+  const $el = $(selector);
+  $el.addClass("shake");
+  setTimeout(() => $el.removeClass("shake"), 420);
+}
+
+function ensureFxLayer() {
+  if ($(".am-fx-layer").length) return;
+  $("body").append('<div class="am-fx-layer"></div>');
+}
+
+function floatFx(text, dx, dy) {
+  ensureFxLayer();
+  const $layer = $(".am-fx-layer");
+
+  const x = window.innerWidth / 2 + (dx || 0);
+  const y = window.innerHeight / 2 + (dy || 0);
+
+  const $node = $('<div class="am-float"></div>').text(text).css({ left: x, top: y });
+  $layer.append($node);
+
+  setTimeout(() => $node.remove(), 950);
+}
+
+// ----------------------
+// init
+// ----------------------
+
+$(function () {
+  if ($("#funds").length === 0) return;
+
+  const saved = getSavedCharacter();
+  if (!saved || !saved.name) {
+    localStorage.removeItem(STORAGE_KEYS.selectedCharacter);
+    redirectToCharacterSelection(false);
     return;
   }
 
-  let chosen = null;
+  const state = new GameState();
+  const player = new Player(saved);
+  const products = new ProductManager();
+  const wallet = new Wallet();
 
-  if (selected === "p1") {
-    chosen = player1;
-  } else if (selected === "p2") {
-    chosen = player2;
-  } else {
-    const id = qs("#guestId").value.trim();
-    const age = Number(qs("#guestAge").value);
-    const res = Number(qs("#resilience").value);
-    const exh = Number(qs("#exhaustion").value);
-    const def = Number(qs("#defense").value);
+  let market = null;
 
-    if (id.length < 2) {
-      event.preventDefault();
-      errors.textContent = "Guest name is required.";
-      return;
-    }
-    if (guestImageData === "") {
-      event.preventDefault();
-      errors.textContent = "Please upload an image.";
-      return;
-    }
-    if (isNaN(age) || age <= 0) {
-      event.preventDefault();
-      errors.textContent = "Please enter a valid age.";
-      return;
-    }
-    if (isNaN(age) || age < 16) {
-      event.preventDefault();
-      errors.textContent = "Age must be 16 or older";
-      return;
-    }
-    if (res === 0 || exh === 0 || def === 0) {
-      event.preventDefault();
-      errors.textContent = "Select all three stat values.";
-      return;
-    }
+  const ui = new UI(state, player, products, {
+    getRawCost: () => state.getRawBaseCost(),
+    getFactoryCost: () => state.getFactoryBaseCost(),
+    recalcDemand: () => {},
+    changeReputation: () => {},
+  }, wallet);
 
-    chosen = {
-      id: "guest",
-      name: id,
-      avatar: guestImageData,
-      age: age,
-      stats: { resilience: res, exhaustion: exh, defense: def },
-    };
-  }
+  const npc = new NpcSpeaker(ui);
 
-  localStorage.setItem("am_player", JSON.stringify(chosen));
-}
+  market = new Market(state, player, products, ui, npc, wallet);
+  ui.market = market;
 
-document.addEventListener("DOMContentLoaded", function () {
-  const form = qs("#startForm");
-  if (form) {
-    renderPresets();
-    setupCardClicks();
-    setupCardKeyboard();
-    setupGuestPreview();
-    form.addEventListener("submit", validateAndSave);
-  }
-});
+  const $npcImg = $("#npc-img");
+  if ($npcImg.length) $npcImg.attr("src", "./assets/npc.png");
 
-// =============================================
-// GAME PAGE (absolute-monopoly.html)
-// =============================================
+  ui.initPlayerPanel();
+  market.recalcDemand();
+  ui.updateAll();
 
-function $(sel) {
-  return document.querySelector(sel);
-}
+  products.loadNewProduct(ui, npc, market);
+  setInterval(() => products.loadNewProduct(ui, npc, market), 30000);
 
-let savedPlayer = null;
-try {
-  savedPlayer = JSON.parse(localStorage.getItem("am_player"));
-} catch (e) {
-  savedPlayer = null;
-}
+  ui.bindControls(redirectToCharacterSelection);
 
-// if game opened directly without selecting a player, send back
-document.addEventListener("DOMContentLoaded", function () {
-  const isGamePage = $("#funds") !== null;
-  if (isGamePage && !savedPlayer) {
-    window.location.href = "../character-selection/character-selection.html";
-  }
-});
+  setInterval(() => {
+    if (Math.random() < 0.35) npc.say("market tip:");
+  }, 12000);
 
-const state = {
-  funds: 20,
-  price: 1.0,
-  inventory: 0,
-  demand: 5.0,
-  raw: 10,
-  factories: 0,
-};
+  // flush wallet if they close tab
+  window.addEventListener("beforeunload", () => wallet.flush());
 
-// TWIST: reputation / customer trust
-let reputation = 50; // 0..100
-
-function getPriceMultiplier() {
-  // customers pay a bit more with high rep, less with low rep (about 0.85x–1.15x)
-  const delta = (reputation - 50) / 200; // -0.25..+0.25 compressed later
-  let mult = 1 + delta * 0.6; // -0.15..+0.15 around 1
-  if (mult < 0.85) mult = 0.85;
-  if (mult > 1.15) mult = 1.15;
-  return mult;
-}
-function getRawCost() {
-  // base $5 → discount at high rep, surcharge at low rep
-  if (reputation >= 80) return 4;
-  if (reputation <= 20) return 6;
-  return 5;
-}
-function getFactoryCost() {
-  // base $50 → discount/surcharge
-  if (reputation >= 80) return 45;
-  if (reputation <= 20) return 60;
-  return 50;
-}
-function changeReputation(amount) {
-  reputation += amount;
-  if (reputation < 0) reputation = 0;
-  if (reputation > 100) reputation = 100;
-}
-// --------------------------------------------------------
-
-function initPlayerPanel() {
-  let name = "Player";
-  let avatar = "/assets/avatars/player1.png";
-  let stats = { resilience: 1, exhaustion: 1, defense: 1 };
-
-  if (savedPlayer) {
-    if (savedPlayer.name) name = savedPlayer.name;
-    if (savedPlayer.avatar) avatar = savedPlayer.avatar;
-    if (savedPlayer.stats) stats = savedPlayer.stats;
-  }
-
-  const plName = $("#plName");
-  const plAvatar = $("#plAvatar");
-  const plStats = $("#plStats");
-
-  if (!plName) return;
-
-  plName.textContent = name;
-  if (plAvatar) plAvatar.src = avatar;
-
-  if (plStats) {
-    let list = "";
-    list += "<li>resilience: " + stats.resilience + "</li>";
-    list += "<li>exhaustion: " + stats.exhaustion + "</li>";
-    list += "<li>defense: " + stats.defense + "</li>";
-    plStats.innerHTML = list;
-  }
-}
-
-function updateUI() {
-  if ($("#funds")) $("#funds").textContent = state.funds.toFixed(2);
-  if ($("#price")) $("#price").textContent = state.price.toFixed(2);
-  if ($("#inventory")) $("#inventory").textContent = state.inventory;
-  if ($("#demand")) $("#demand").textContent = state.demand.toFixed(1);
-  if ($("#raw")) $("#raw").textContent = state.raw;
-  if ($("#ips")) $("#ips").textContent = state.factories.toFixed(1);
-  if ($("#reputation")) $("#reputation").textContent = reputation;
-
-  // reflect dynamic costs in button labels
-  const buyMatsBtn = $("#buyMats");
-  const buyFactoryBtn = $("#buyFactory");
-  if (buyMatsBtn) buyMatsBtn.textContent = "Buy 10 Raw ($" + getRawCost() + ")";
-  if (buyFactoryBtn)
-    buyFactoryBtn.textContent = "Buy Factory ($" + getFactoryCost() + ")";
-}
-
-function say(msg) {
-  const npc = $("#npc");
-  if (npc) npc.textContent = msg;
-}
-
-function checkMilestones() {
-  // positive feedback
-  if (state.funds >= 100 && state.funds < 150) {
-    say("Nice bankroll ! you're rolling !");
-  }
-  if (reputation >= 80 && reputation < 90) {
-    say("Customers love you. Prices can stretch a bit !");
-  }
-  if (state.factories === 3) {
-    say("Factory row ! Production's humming.");
-  }
-
-  // negative feedback
-  if (state.funds < 5) {
-    say("You're running low on funds!");
-  }
-  if (reputation <= 20) {
-    say("Your reputation's tanking... time to fix that.");
-  }
-}
-
-function recalcDemand() {
-  const base = 6.0;
-  const pricePenalty = Math.max(0, state.price - 1.0) * 1.2;
-  const stockPenalty = Math.min(3.0, state.inventory / 25.0);
-  state.demand = Math.max(0, base - pricePenalty - stockPenalty);
-}
-
-function tick() {
-  // manufacture
-  const made = Math.min(state.factories, state.raw);
-  state.inventory += made;
-  state.raw -= made;
-
-  // sell with reputation multiplier
-  const potential = Math.floor(state.demand);
-  const sold = Math.min(potential, state.inventory);
-  state.inventory -= sold;
-
-  const paidPerItem = state.price * getPriceMultiplier();
-  state.funds += sold * paidPerItem;
-
-  // reputation changes
-  if (sold > 0) changeReputation(1);
-  else changeReputation(-1);
-  if (state.price > 2.5) changeReputation(-1); // overpricing hurts rep
-
-  // demand is nudged by reputation
-  recalcDemand();
-  if (reputation >= 80) state.demand += 0.5;
-  if (reputation <= 20) state.demand -= 0.5;
-
-  updateUI();
-}
-
-function bindControls() {
-  const up = $("#priceUp");
-  const down = $("#priceDown");
-  const make = $("#makeOne");
-  const mats = $("#buyMats");
-  const factory = $("#buyFactory");
-  const reset = $("#resetGame");
-
-  if (up) {
-    up.addEventListener("click", function () {
-      state.price = state.price + 0.25;
-      recalcDemand();
-      updateUI();
-    });
-  }
-
-  if (down) {
-    down.addEventListener("click", function () {
-      state.price = Math.max(0.25, state.price - 0.25);
-      recalcDemand();
-      updateUI();
-    });
-  }
-
-  if (make) {
-    make.addEventListener("click", function () {
-      if (state.raw > 0) {
-        state.raw = state.raw - 1;
-        state.inventory = state.inventory + 1;
-        updateUI();
-      } else {
-        say("You need raw materials first.");
-        changeReputation(-1);
-      }
-    });
-  }
-
-  if (mats) {
-    mats.addEventListener("click", function () {
-      const cost = getRawCost();
-      if (state.funds >= cost) {
-        state.funds = state.funds - cost;
-        state.raw = state.raw + 10;
-        changeReputation(1); // suppliers like steady buyers
-        updateUI();
-      } else {
-        say("Not enough funds.");
-        changeReputation(-1);
-      }
-    });
-  }
-
-  if (factory) {
-    factory.addEventListener("click", function () {
-      const cost = getFactoryCost();
-      if (state.funds >= cost) {
-        state.funds = state.funds - cost;
-        state.factories = state.factories + 1;
-        changeReputation(2); // big investment = respect
-        updateUI();
-      } else {
-        say("Earn more before buying a factory.");
-        changeReputation(-1);
-      }
-    });
-  }
-
-  if (reset) {
-    reset.addEventListener("click", function () {
-      localStorage.removeItem("am_player");
-      window.location.href = "../character-selection/character-selection.html";
-    });
-  }
-}
-
-document.addEventListener("DOMContentLoaded", function () {
-  const isGamePage = $("#funds") !== null;
-  if (isGamePage) {
-    initPlayerPanel();
-    recalcDemand();
-    updateUI();
-    bindControls();
-    setInterval(tick, 1000);
-  }
+  setInterval(() => market.tick(), 2000);
 });

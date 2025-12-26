@@ -11,7 +11,7 @@ export const PLAYER_ONE = {
     attack: "./assets/3-p1-attack.png",
     hurt: "./assets/4-p1-hurt.png",
     win: "./assets/5-p1-win.png",
-    lose: "./assets/6-p2-lose.png", // or whatever your file name is
+    lose: "./assets/6-p1-lose.png", 
     bake: "./assets/7-p1-bake.png",
   },
   updateScore(amount) {
