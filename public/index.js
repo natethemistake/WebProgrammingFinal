@@ -1,5 +1,3 @@
-// public/index.js
-
 const STORAGE_KEYS = {
   selectedCharacter: "am_selectedCharacter",
 };
@@ -10,8 +8,7 @@ function getSelectedCharacter() {
 
   try {
     return JSON.parse(raw);
-  } catch (e) {
-    console.log("bad selected character in storage:", e);
+  } catch {
     return null;
   }
 }
@@ -21,11 +18,9 @@ $(function () {
     const character = getSelectedCharacter();
 
     if (character && character.name) {
-      window.location.href = "../features/main-menu/main-menu.html";
-      return;
+      window.location.href = "./features/main-menu/main-menu.html";
+    } else {
+      window.location.href = "./features/character-selection/character-selection.html";
     }
-
-    window.location.href =
-      "../features/character-selection/character-selection.html";
   });
 });
